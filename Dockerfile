@@ -1,7 +1,8 @@
 FROM node:22-alpine
 RUN apk add --no-cache ffmpeg
 WORKDIR /app
-COPY package.json server.js media.js ./
+COPY package.json server.js media.js places.js ./
+COPY data ./data
 COPY public ./public
 RUN mkdir -p /data/uploads && chown -R node:node /data
 ENV NODE_ENV=production \

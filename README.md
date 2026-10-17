@@ -3,7 +3,7 @@
 Anonyme Posts mit Fotos und Videos, die nur Leute im Umkreis von 10 km sehen. Mit Up-/Downvotes, Antworten, Karma und Sortierung. Läuft im Browser, als installierbare Web-App und als Android-App (APK).
 Gestaltet im Stil der Ideenwerft Friedenau: Ideenwerft-Rot, Space Grotesk und Syne, Anker-Logo, helle Karten mit Farbakzent, Dark Mode.
 
-![Feed](docs/feed.png) ![Foto-Post](docs/media.png) ![Dark Mode](docs/dark.png)
+![Feed](docs/feed.png) ![Kanäle](docs/channels.png) ![Profil](docs/profile.png) ![Dark Mode](docs/dark.png)
 
 ## Starten
 
@@ -80,15 +80,26 @@ damit Video-Umwandlungen die Website nicht ausbremsen. Platzbedarf: ein Foto ca.
 - **Votes:** ▲/▼, erneutes Tippen nimmt den Vote zurück. Eigene Posts kann man nicht voten. Ab Score −5 verschwindet ein Post.
 - **Antworten:** Der Ersteller ist mit **OJ** markiert, alle anderen bekommen pro Thread eine feste Nummer (#1, #2 …).
 - **Sortierung:** Neueste, Beliebt (Votes gewichtet mit Alter), Am lautesten (meiste Antworten).
+- **Moderne Bedienung:** untere Navigation mit Kiez, Meine, Kanäle und Profil; wischen zum Aktualisieren; doppelt tippen zum Upvoten; Ladeplatzhalter, Animationen und Seitenübergänge; Vibration und kurze Töne (abschaltbar); Hinweis „neue Posts“; Teilen.
+- **Kanäle:** Jeder #Hashtag wird zum Kanal. Die beliebtesten Hashtags der Umgebung stehen über dem Feed und unter „Kanäle“.
+- **Meine:** eigene Posts, kommentierte und hochgevotete Posts.
+- **Profil:** Karma mit Stufen (Neuling, Kiezkind, Stammgast, Kiezlegende, Kapitän), Statistik, Standortwahl, Hell/Dunkel/Auto.
+- **Ortsname:** statt „In deiner Nähe“ steht oben der Ortsteil, z. B. „Friedenau“ (offline aus GeoNames-Daten, siehe unten).
 - **Fotos und Videos:** in Posts und Antworten. Fotos werden auf 1600 px verkleinert, Videos auf max. 60 s und 720p (H.264) umgewandelt und bekommen ein Vorschaubild. Dabei werden alle Metadaten wie der GPS-Ort entfernt (braucht `ffmpeg`, im Docker-Image enthalten). In der Android-App kann man direkt mit der Kamera aufnehmen.
 - **Karma:** Summe aller Votes auf die eigenen Beiträge (Stern oben rechts).
 - **Moderation:** Melden; ab 3 Meldungen wird ein Beitrag gelöscht. Eigene Beiträge lassen sich löschen. Rate-Limit: 10 Beiträge pro 10 Minuten.
 - **PWA:** installierbar, App-Hülle funktioniert offline.
 
+## Datenquellen
+
+`data/places.tsv` enthält Orte in Deutschland, Österreich, der Schweiz, Liechtenstein und Luxemburg aus [GeoNames](https://www.geonames.org)
+(über das npm-Paket `cities.json`), Lizenz [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
 ## Aufbau
 
 ```
 server.js            HTTP-Server, REST-API, SQLite (node:sqlite)
+places.js            Ortsname zu Koordinaten (offline)
 media.js             Foto-/Video-Upload, Umwandlung mit ffmpeg, Auslieferung mit Range-Support
 android/             Android-App (Capacitor)
 deploy/              Docker Compose, Caddy-Block und Update-Skript für den Server
@@ -108,7 +119,7 @@ Alle Routen außer `/api/register` brauchen `Authorization: Bearer <token>`.
 | Methode | Pfad                        | Zweck                                  |
 |---------|-----------------------------|----------------------------------------|
 | POST    | `/api/register`             | anonymes Konto, liefert `token`        |
-| GET     | `/api/posts?lat&lng&sort`   | Feed (`sort` = `new`/`popular`/`loud`) |
+| GET     | `/api/posts?lat&lng&sort&tag` | Feed (`sort` = `new`/`popular`/`loud`, `tag` = Kanal) und Trend-Hashtags |
 | POST    | `/api/media`                | Rohdaten, `Content-Type` = MIME-Typ; liefert `id` |
 | POST    | `/api/posts`                | `{text, mediaId?, lat, lng}`           |
 | GET     | `/api/posts/:id?lat&lng`    | Post mit Antworten                     |
@@ -116,8 +127,10 @@ Alle Routen außer `/api/register` brauchen `Authorization: Bearer <token>`.
 | POST    | `/api/posts/:id/vote`       | `{value: 1 / -1 / 0}`                  |
 | POST    | `/api/posts/:id/report`     | melden                                 |
 | DELETE  | `/api/posts/:id`            | eigenen Beitrag löschen                |
-| GET     | `/api/me`                   | Karma und Anzahl Beiträge              |
+| GET     | `/api/me`                   | Karma, Stufe und Statistik             |
+| GET     | `/api/me/activity?kind`     | `posts` / `replies` / `voted`          |
+| GET     | `/api/place?lat&lng`        | Ortsname, z. B. „Friedenau“            |
 
 ## Mögliche nächste Schritte
 
-Kanäle/Hashtags, Push-Benachrichtigungen bei Antworten, Heimatstadt-Funktion, iOS-App, Betrieb mit Postgres/PostGIS bei vielen Nutzern.
+Push-Benachrichtigungen bei Antworten, Heimatstadt-Funktion, iOS-App, Betrieb mit Postgres/PostGIS bei vielen Nutzern.

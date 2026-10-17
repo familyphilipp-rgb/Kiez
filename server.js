@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const media = require('./media');
+const { nearestPlace } = require('./places');
 
 const PORT = Number(process.env.PORT) || 3000;
 const RADIUS_KM = Number(process.env.RADIUS_KM) || 10;
@@ -76,6 +77,20 @@ function distanceLabel(km) {
   if (km < 2) return 'nah';
   if (km < 5) return `${Math.round(km)} km`;
   return 'weiter weg';
+}
+
+// Hashtags wie #mensa oder #wg_suche, klein geschrieben und ohne Doppelte
+function hashtags(text) {
+  return [...new Set((text.match(/#[\p{L}\p{N}_]{2,30}/gu) || []).map((t) => t.slice(1).toLowerCase()))];
+}
+
+// Karma-Stufen
+const LEVELS = [[0, 'Neuling'], [10, 'Kiezkind'], [50, 'Stammgast'], [200, 'Kiezlegende'], [1000, 'Kapitän']];
+function level(karma) {
+  let i = 0;
+  while (i + 1 < LEVELS.length && karma >= LEVELS[i + 1][0]) i++;
+  const next = LEVELS[i + 1];
+  return { name: LEVELS[i][1], next: next ? { name: next[1], at: next[0] } : null, from: LEVELS[i][0] };
 }
 
 // Hot-Score: Votes gewichtet mit Alter (ähnlich Hacker News)
@@ -210,17 +225,23 @@ async function handleApi(req, res, url) {
     const sort = searchParams.get('sort') || 'new';
     const dLat = RADIUS_KM / 111;
     const dLng = RADIUS_KM / (111 * Math.max(Math.cos((origin.lat * Math.PI) / 180), 0.01));
-    const rows = db.prepare(`
+    let rows = db.prepare(`
       SELECT ${POST_COLUMNS} FROM posts p
       WHERE p.parent_id IS NULL AND p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?
         AND p.created_at > ?
       ORDER BY p.created_at DESC LIMIT 1000`)
       .all(origin.lat - dLat, origin.lat + dLat, origin.lng - dLng, origin.lng + dLng, Date.now() - 7 * 86_400_000)
       .filter((p) => haversineKm(origin.lat, origin.lng, p.lat, p.lng) <= RADIUS_KM && p.score > DELETE_AT_SCORE);
+    // Kanäle: die häufigsten Hashtags in der Umgebung, optional danach filtern
+    const tagCounts = new Map();
+    for (const p of rows) for (const t of hashtags(p.text)) tagCounts.set(t, (tagCounts.get(t) || 0) + 1);
+    const trending = [...tagCounts].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([tag, count]) => ({ tag, count }));
+    const tag = (searchParams.get('tag') || '').toLowerCase().replace(/^#/, '');
+    if (tag) rows = rows.filter((p) => hashtags(p.text).includes(tag));
     const now = Date.now();
     if (sort === 'popular') rows.sort((a, b) => hotScore(b, now) - hotScore(a, now));
     else if (sort === 'loud') rows.sort((a, b) => b.comment_count - a.comment_count || b.created_at - a.created_at);
-    return send(res, 200, { radiusKm: RADIUS_KM, posts: rows.slice(0, 100).map((p) => serialize(p, user.id, origin)) });
+    return send(res, 200, { radiusKm: RADIUS_KM, trending, posts: rows.slice(0, 100).map((p) => serialize(p, user.id, origin)) });
   }
 
   // Neuer Post
@@ -309,11 +330,33 @@ async function handleApi(req, res, url) {
     return r.changes ? send(res, 200, { ok: true }) : send(res, 404, { error: 'Post nicht gefunden' });
   }
 
+  // Ortsname für die Kopfzeile, z. B. „Friedenau“
+  if (req.method === 'GET' && pathname === '/api/place') {
+    const origin = parseCoords(searchParams);
+    if (!origin) return send(res, 400, { error: 'Standort fehlt' });
+    return send(res, 200, { name: nearestPlace(origin.lat, origin.lng) });
+  }
+
   // Karma: Summe aller Votes auf eigene Beiträge
   if (req.method === 'GET' && pathname === '/api/me') {
     const { karma } = db.prepare(`SELECT COALESCE(SUM(v.value), 0) AS karma FROM votes v JOIN posts p ON p.id = v.post_id WHERE p.user_id = ?`).get(user.id);
-    const { posts } = db.prepare('SELECT COUNT(*) AS posts FROM posts WHERE user_id = ?').get(user.id);
-    return send(res, 200, { karma, posts });
+    const { posts } = db.prepare('SELECT COUNT(*) AS posts FROM posts WHERE user_id = ? AND parent_id IS NULL').get(user.id);
+    const { replies } = db.prepare('SELECT COUNT(*) AS replies FROM posts WHERE user_id = ? AND parent_id IS NOT NULL').get(user.id);
+    const { votes } = db.prepare('SELECT COUNT(*) AS votes FROM votes WHERE user_id = ?').get(user.id);
+    return send(res, 200, { karma, posts, replies, votes, level: level(karma) });
+  }
+
+  // Meine Aktivität: eigene Posts, Posts mit eigener Antwort, hochgevotete Posts
+  if (req.method === 'GET' && pathname === '/api/me/activity') {
+    const kind = searchParams.get('kind') || 'posts';
+    const where = {
+      posts: 'p.user_id = ?',
+      replies: 'p.id IN (SELECT parent_id FROM posts WHERE user_id = ? AND parent_id IS NOT NULL)',
+      voted: 'p.id IN (SELECT post_id FROM votes WHERE user_id = ? AND value = 1)',
+    }[kind];
+    if (!where) return send(res, 400, { error: 'Unbekannte Auswahl' });
+    const rows = db.prepare(`SELECT ${POST_COLUMNS} FROM posts p WHERE p.parent_id IS NULL AND ${where} ORDER BY p.created_at DESC LIMIT 100`).all(user.id);
+    return send(res, 200, { posts: rows.map((p) => serialize(p, user.id, parseCoords(searchParams))) });
   }
 
   return send(res, 404, { error: 'Unbekannte Route' });

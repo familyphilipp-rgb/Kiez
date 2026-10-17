@@ -118,3 +118,28 @@ test('Video: wird zu MP4 umgewandelt, bekommt Vorschaubild, Range-Anfragen gehen
   const meta = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format_tags', '-of', 'json', path.join(process.env.UPLOAD_DIR, path.basename(up.data.url))]);
   assert.ok(!String(meta.stdout).includes('52.52'), 'GPS-Metadaten müssen entfernt sein');
 });
+
+test('Hashtags als Kanäle, Meine Aktivität und Karma-Stufe', async () => {
+  const a = await newUser(), b = await newUser();
+  const { data: p1 } = await call('POST', '/api/posts', a, { text: 'Wer kommt mit? #Flohmarkt #kiez', ...BERLIN });
+  await call('POST', '/api/posts', b, { text: 'Heute #flohmarkt am Breslauer Platz', ...BERLIN });
+  const feed = await call('GET', `/api/posts?lat=${BERLIN.lat}&lng=${BERLIN.lng}&tag=flohmarkt`, a);
+  assert.equal(feed.data.posts.length, 2);
+  assert.deepEqual(feed.data.trending[0], { tag: 'flohmarkt', count: 2 });
+  await call('POST', `/api/posts/${p1.id}/replies`, b, { text: 'Ich!' });
+  await call('POST', `/api/posts/${p1.id}/vote`, b, { value: 1 });
+  const mine = await call('GET', '/api/me/activity?kind=posts', a);
+  assert.deepEqual(mine.data.posts.map((p) => p.id), [p1.id]);
+  assert.deepEqual((await call('GET', '/api/me/activity?kind=replies', b)).data.posts.map((p) => p.id), [p1.id]);
+  assert.deepEqual((await call('GET', '/api/me/activity?kind=voted', b)).data.posts.map((p) => p.id), [p1.id]);
+  const me = await call('GET', '/api/me', a);
+  assert.equal(me.data.karma, 1);
+  assert.equal(me.data.level.name, 'Neuling');
+  assert.equal(me.data.level.next.name, 'Kiezkind');
+});
+
+test('Ortsname aus Koordinaten', async () => {
+  const u = await newUser();
+  assert.equal((await call('GET', '/api/place?lat=52.4707&lng=13.3304', u)).data.name, 'Friedenau');
+  assert.equal((await call('GET', '/api/place?lat=0&lng=-30', u)).data.name, null);
+});
