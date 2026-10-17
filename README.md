@@ -45,8 +45,10 @@ Bei jedem Push auf `main` baut GitHub Actions automatisch eine APK und stellt si
 **„Neueste APK“** bereit: im Repo unter *Releases → apk-latest → kiez.apk*. Auf dem Handy herunterladen,
 öffnen und „Installation aus dieser Quelle erlauben“ bestätigen. Neue Versionen lassen sich einfach drüber installieren.
 
-Die App ist eine Hülle um die Web-App auf dem Server (Capacitor). Neue Funktionen auf dem Server sind deshalb
-sofort in der App, ohne neue APK. Eine neue APK braucht es nur bei Änderungen im Ordner `android/`.
+Die App ist komplett nativ in Kotlin mit Jetpack Compose geschrieben und spricht direkt mit der REST-API des Servers.
+Fotos lädt sie mit Coil, Videos spielt sie mit ExoPlayer (Media3) und speichert gesehene Videos bis 200 MB zwischen.
+Der Standort kommt vom Android-LocationManager, ohne Google-Dienste. Fotos werden schon auf dem Handy verkleinert
+und ohne EXIF-Daten hochgeladen. Die Web-App im Ordner `public/` bleibt für Browser und iPhone erhalten.
 
 **Server-Adresse:** Die App lädt `https://kiez.ideenwerft-friedenau.de`. Andere Adresse: im Repo unter
 *Settings → Secrets and variables → Actions → Variables* die Variable `KIEZ_SERVER_URL` setzen (z. B. `https://kiez.example.de`)
@@ -56,7 +58,7 @@ und den Workflow „Android-APK“ neu starten.
 ohne Deinstallation klappen. Das reicht zum Verteilen per Link. Für den Play Store einen eigenen, geheimen Schlüssel
 erstellen und über `KIEZ_KEYSTORE_FILE`, `KIEZ_KEYSTORE_PASSWORD`, `KIEZ_KEY_ALIAS`, `KIEZ_KEY_PASSWORD` übergeben.
 
-Lokal bauen (mit Android Studio oder Android SDK): `npm ci && npm run android:sync && cd android && ./gradlew assembleRelease`.
+Lokal bauen: Ordner `android/` in Android Studio öffnen, oder mit Android SDK und JDK 17: `cd android && ./gradlew assembleRelease`.
 
 ## Auf dem Hetzner-Server (neben der Ideenwerft-Website)
 
@@ -101,7 +103,7 @@ damit Video-Umwandlungen die Website nicht ausbremsen. Platzbedarf: ein Foto ca.
 server.js            HTTP-Server, REST-API, SQLite (node:sqlite)
 places.js            Ortsname zu Koordinaten (offline)
 media.js             Foto-/Video-Upload, Umwandlung mit ffmpeg, Auslieferung mit Range-Support
-android/             Android-App (Capacitor)
+android/             Native Android-App (Kotlin, Jetpack Compose)
 deploy/              Docker Compose, Caddy-Block und Update-Skript für den Server
 .github/workflows/   Tests und APK-Build
 public/index.html    App-Hülle

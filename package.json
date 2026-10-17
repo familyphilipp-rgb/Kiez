@@ -9,13 +9,6 @@
   },
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",
-    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
-    "android:sync": "node scripts/set-server-url.js && cap sync android"
-  },
-  "devDependencies": {
-    "@capacitor/android": "8.5.3",
-    "@capacitor/app": "8.1.2",
-    "@capacitor/cli": "8.5.3",
-    "@capacitor/core": "8.5.3"
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
   }
 }

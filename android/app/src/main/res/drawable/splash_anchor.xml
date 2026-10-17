@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Anker-Symbol (wie im Ideenwerft-Logo) für den Startbildschirm -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <group android:translateX="24" android:translateY="24">
+        <path
+            android:pathData="M12,22V8M5,12H2a10,10 0,0 0,20 0h-3M15,5a3,3 0,1 1,-6 0a3,3 0,1 1,6 0z"
+            android:strokeColor="@color/kiez_red"
+            android:strokeWidth="2.2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000" />
+    </group>
+</vector>

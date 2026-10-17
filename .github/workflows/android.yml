@@ -28,28 +28,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Abhängigkeiten installieren
-        run: npm ci
-
-      - name: Server-Adresse eintragen und Android-Projekt synchronisieren
+      - name: APK bauen (Kotlin, Jetpack Compose)
+        working-directory: android
         env:
           # Unter Settings → Secrets and variables → Actions → Variables änderbar
           KIEZ_SERVER_URL: ${{ vars.KIEZ_SERVER_URL }}
-        run: npm run android:sync
-
-      - name: APK bauen
-        working-directory: android
-        run: ./gradlew --no-daemon assembleRelease
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
 
       - name: APK umbenennen
         run: cp android/app/build/outputs/apk/release/app-release.apk kiez.apk
