@@ -1,8 +1,9 @@
 # Kiez – hyperlokale, anonyme Community-App (Jodel-Klon)
 
 Anonyme Posts, die nur Leute im Umkreis von 10 km sehen. Mit Up-/Downvotes, Antworten, Karma und Sortierung.
+Gestaltet im Stil der Ideenwerft Friedenau: Ideenwerft-Rot, Space Grotesk und Syne, Anker-Logo, helle Karten mit Farbakzent, Dark Mode.
 
-![Feed](docs/feed.png) ![Antworten](docs/detail.png)
+![Feed](docs/feed.png) ![Antworten](docs/detail.png) ![Dark Mode](docs/dark.png)
 
 ## Starten
 
@@ -52,7 +53,8 @@ Die angezeigte https-Adresse am Handy öffnen und über „Zum Startbildschirm h
 server.js            HTTP-Server, REST-API, SQLite (node:sqlite)
 public/index.html    App-Hülle
 public/app.js        Frontend (ohne Framework)
-public/style.css     Design, inkl. Dark Mode
+public/style.css     Design im Ideenwerft-Stil, inkl. Dark Mode
+public/fonts/        Space Grotesk und Syne (aus dem Ideenwerft-Repo)
 public/sw.js         Service Worker
 test/api.test.js     API-Tests
 ```

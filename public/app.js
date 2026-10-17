@@ -2,7 +2,6 @@
 const $ = (s) => document.querySelector(s);
 const view = $('#view');
 const state = { token: null, coords: null, sort: 'new', openPost: null };
-const COLORS = ['#FF9908', '#FFBA00', '#DD5F5F', '#06A3CB', '#8ABDB0', '#9EC41C'];
 // Ausweich-Standorte, falls die Standortfreigabe fehlt (z. B. zum Testen am Desktop)
 const CITIES = { Berlin: [52.52, 13.405], Hamburg: [53.551, 9.993], München: [48.137, 11.575], Köln: [50.937, 6.96],
   Leipzig: [51.34, 12.375], Wien: [48.208, 16.373], Zürich: [47.377, 8.541] };
@@ -95,12 +94,12 @@ function postCard(p, { isReply = false, onOpen } = {}) {
     el('div', { class: 'text' }, p.text),
     el('div', { class: 'footer' }, isReply ? null : el('span', {}, `💬 ${p.commentCount}`), ...actions));
 
-  return el('article', { class: 'post' + (isReply ? ' reply' : ''), style: `background:${p.color}` }, body, votes);
+  return el('article', { class: 'post' + (isReply ? ' reply' : ''), style: `--accent:${p.color}` }, body, votes);
 }
 
 async function showFeed() {
   state.openPost = null;
-  $('#tabs').hidden = false; $('#fab').hidden = false;
+  $('#tabs').hidden = false; $('#fab').hidden = false; $('#intro').hidden = false;
   history.replaceState(null, '', '/');
   try {
     const { posts, radiusKm } = await api(`/api/posts?${qs()}&sort=${state.sort}`);
@@ -118,7 +117,7 @@ async function showFeed() {
 
 async function openPost(id) {
   state.openPost = id;
-  $('#tabs').hidden = true; $('#fab').hidden = true;
+  $('#tabs').hidden = true; $('#fab').hidden = true; $('#intro').hidden = true;
   try {
     const { post, replies } = await api(`/api/posts/${id}?${qs()}`);
     const input = el('input', { placeholder: 'Antworten…', maxlength: 250, required: true });
@@ -138,8 +137,6 @@ async function openPost(id) {
 }
 
 function openComposer() {
-  const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-  $('#composeCard').style.background = color;
   $('#composeText').value = ''; $('#count').textContent = '0';
   $('#composer').showModal();
   $('#composeText').focus();

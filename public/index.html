@@ -3,21 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#FF9908">
+  <meta name="theme-color" content="#F7F9FB" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14171F" media="(prefers-color-scheme: dark)">
   <title>Kiez – was passiert um dich herum</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="preload" href="/fonts/SpaceGrotesk.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/Syne.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">Kiez</div>
+    <a class="brand" href="/" aria-label="Kiez – Startseite">
+      <svg class="anchor" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><circle cx="12" cy="5" r="3"/></svg>
+      <span>KIEZ</span>
+    </a>
     <div class="place" id="place">Standort wird gesucht…</div>
     <button class="karma" id="karma" title="Dein Karma">0</button>
   </header>
 
-  <nav class="tabs" id="tabs">
+  <section class="intro" id="intro">
+    <span class="eyebrow">Anonym · im Umkreis von 10 km</span>
+    <h1>Was los ist im Kiez</h1>
+  </section>
+
+  <nav class="tabs" id="tabs" aria-label="Sortierung">
     <button data-sort="new" class="active">Neueste</button>
     <button data-sort="popular">Beliebt</button>
     <button data-sort="loud">Am lautesten</button>
@@ -25,11 +36,14 @@
 
   <main id="view"></main>
 
-  <button class="fab" id="fab" aria-label="Neuer Post">+</button>
+  <button class="fab" id="fab" aria-label="Neuer Post">
+    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
 
   <dialog id="composer">
     <form method="dialog" id="composeForm">
       <div class="compose-card" id="composeCard">
+        <span class="eyebrow">Neuer Post</span>
         <textarea id="composeText" maxlength="250" placeholder="Was ist los in deiner Gegend?" required></textarea>
         <div class="counter"><span id="count">0</span>/250</div>
       </div>

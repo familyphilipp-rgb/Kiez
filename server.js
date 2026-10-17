@@ -11,7 +11,8 @@ const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'jodel.db');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DELETE_AT_SCORE = -5;          // Posts mit diesem Score verschwinden (wie bei Jodel)
 const MAX_LEN = 250;
-const COLORS = ['#FF9908', '#FFBA00', '#DD5F5F', '#06A3CB', '#8ABDB0', '#9EC41C'];
+// Akzentfarben aus der Ideenwerft-Palette (Rot, Stahlblau, Bernstein, Grün, Pflaume, Petrol)
+const COLORS = ['#CD1818', '#58769D', '#CF8217', '#29A366', '#9B3B6B', '#30878F'];
 
 const db = new DatabaseSync(DB_FILE);
 db.exec(`
@@ -140,7 +141,7 @@ function validText(t) {
 }
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
-  '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png' };
+  '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.webp': 'image/webp' };
 
 function serveStatic(req, res, pathname) {
   const file = path.normalize(path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname));
@@ -154,7 +155,8 @@ function serveStatic(req, res, pathname) {
         res.end(html);
       });
     }
-    res.writeHead(200, { 'Content-Type': (MIME[path.extname(file)] || 'application/octet-stream') + '; charset=utf-8' });
+    const type = MIME[path.extname(file)] || 'application/octet-stream';
+    res.writeHead(200, { 'Content-Type': type.startsWith('text/') || type.endsWith('json') ? type + '; charset=utf-8' : type });
     res.end(data);
   });
 }
