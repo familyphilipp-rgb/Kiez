@@ -12,4 +12,8 @@ const file = path.join(__dirname, '..', 'capacitor.config.json');
 const config = JSON.parse(fs.readFileSync(file, 'utf8'));
 config.server = { ...config.server, url };
 fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
+
+// Auch die Fehlerseite der App soll es bei „Erneut versuchen“ an der richtigen Adresse probieren
+const offline = path.join(__dirname, '..', 'public', 'offline.html');
+fs.writeFileSync(offline, fs.readFileSync(offline, 'utf8').replace(/const SERVER_URL = '[^']*';/, `const SERVER_URL = '${url}';`));
 console.log(`Server-Adresse der App: ${url}`);
