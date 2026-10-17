@@ -31,12 +31,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Tag
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,7 +53,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -143,7 +152,9 @@ fun ChannelsScreen(vm: KiezViewModel, openTag: (String) -> Unit) {
 @Composable
 fun ProfileScreen(vm: KiezViewModel, chooseLocation: () -> Unit) {
     val k = LocalKiez.current
+    var editServer by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.refreshMe() }
+    if (editServer) ServerDialog(vm) { editServer = false }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 120.dp)) {
         ScreenHeader("Profil", "Dein Kiez-Karma")
         KarmaCard(vm)
@@ -172,6 +183,18 @@ fun ProfileScreen(vm: KiezViewModel, chooseLocation: () -> Unit) {
             }
         }
 
+        Section("Server") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Dns, null, tint = k.primary)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(vm.serverUrl.removePrefix("https://"), style = MaterialTheme.typography.titleMedium, color = k.text, maxLines = 2)
+                    Text(if (vm.customServer) "Eigener Server" else "Standard-Server", style = MaterialTheme.typography.bodySmall, color = k.mutedText)
+                }
+                OutlinedButton(onClick = { editServer = true }) { Text("Ändern") }
+            }
+        }
+
         Section("Anonym") {
             Row {
                 Icon(Icons.Rounded.Shield, null, tint = k.primary)
@@ -189,6 +212,32 @@ fun ProfileScreen(vm: KiezViewModel, chooseLocation: () -> Unit) {
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
         )
     }
+}
+
+@Composable
+private fun ServerDialog(vm: KiezViewModel, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(vm.serverUrl) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Server-Adresse") },
+        text = {
+            Column {
+                Text(
+                    "Die Adresse, unter der dein Kiez-Server läuft. Jeder Server ist ein eigener Kiez mit eigenen Posts.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    text, { text = it }, singleLine = true, placeholder = { Text("https://kiez.example.de") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { if (vm.changeServer(text)) onDismiss() }) { Text("Speichern") } },
+        dismissButton = {
+            TextButton(onClick = { vm.changeServer(null); onDismiss() }) { Text("Standard") }
+        },
+    )
 }
 
 @Composable

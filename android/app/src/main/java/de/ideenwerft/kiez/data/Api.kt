@@ -31,7 +31,9 @@ import kotlin.coroutines.resumeWithException
 class ApiException(message: String, val status: Int = 0) : Exception(message)
 
 // Verbindung zum Kiez-Server (dieselbe REST-API wie die Web-App)
-class Api(private val baseUrl: String, val client: OkHttpClient, private val prefs: Prefs) {
+class Api(val defaultUrl: String, val client: OkHttpClient, private val prefs: Prefs) {
+    val baseUrl: String get() = prefs.serverUrl ?: defaultUrl
+
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }
     private val jsonType = "application/json".toMediaType()
     private val registerLock = Mutex()

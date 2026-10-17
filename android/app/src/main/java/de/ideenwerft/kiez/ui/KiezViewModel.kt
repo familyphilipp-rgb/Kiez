@@ -21,6 +21,7 @@ import de.ideenwerft.kiez.data.Sort
 import de.ideenwerft.kiez.data.Trend
 import de.ideenwerft.kiez.data.currentLocation
 import kotlinx.coroutines.Job
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -50,6 +51,8 @@ class KiezViewModel : ViewModel() {
     var karma by mutableIntStateOf(0); private set
     var me by mutableStateOf<Me?>(null); private set
     var message by mutableStateOf<String?>(null)
+    var serverUrl by mutableStateOf(api.baseUrl); private set
+    val customServer get() = prefs.serverUrl != null
 
     // Feed
     var sort by mutableStateOf(Sort.NEW); private set
@@ -208,6 +211,22 @@ class KiezViewModel : ViewModel() {
 
     fun refreshMe() = viewModelScope.launch {
         runCatching { api.me() }.getOrNull()?.let { me = it; karma = it.karma }
+    }
+
+    // Anderer Server: neues anonymes Konto dort, alter Feed wird verworfen
+    fun changeServer(input: String?): Boolean {
+        val url = input?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+            ?.let { if (it.startsWith("http://") || it.startsWith("https://")) it else "https://$it" }
+        if (url != null && url.toHttpUrlOrNull() == null) { toast("Das ist keine gültige Adresse"); return false }
+        val next = url?.takeIf { it != api.defaultUrl }
+        if (next == prefs.serverUrl) return true
+        prefs.serverUrl = next; prefs.token = null; prefs.cachedFeed = null
+        serverUrl = api.baseUrl
+        feed.clear(); activity.clear(); trending = emptyList(); me = null; karma = 0
+        feedState = LoadState.Loading
+        loadFeed(); refreshMe()
+        toast("Verbunden mit ${serverUrl.removePrefix("https://")}")
+        return true
     }
 
     fun changeTheme(t: String) { theme = t; prefs.theme = t }
