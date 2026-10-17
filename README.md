@@ -50,9 +50,9 @@ Fotos lädt sie mit Coil, Videos spielt sie mit ExoPlayer (Media3) und speichert
 Der Standort kommt vom Android-LocationManager, ohne Google-Dienste. Fotos werden schon auf dem Handy verkleinert
 und ohne EXIF-Daten hochgeladen. Die Web-App im Ordner `public/` bleibt für Browser und iPhone erhalten.
 
-**Server-Adresse:** In der App unter *Profil → Server* lässt sich jede Adresse eintragen, die App hängt also an keiner
-festen Domain. Ohne eigene Domain geht z. B. `https://kiez.<IP-des-Servers>.sslip.io` (Caddy holt dafür automatisch ein
-Zertifikat), zum Testen im Heimnetz auch `http://192.168.x.x:3000`. Vorgabe beim Bauen ist `https://kiez.ideenwerft-friedenau.de`. Andere Adresse: im Repo unter
+**Server-Adresse:** Die Adresse ist fest in die App eingebaut und dort nicht sichtbar oder änderbar. Sie kommt aus der
+Actions-Variable `KIEZ_SERVER_URL` (steht damit nicht im Code), z. B. `http://203.0.113.10:3000` oder ohne eigene Domain mit
+HTTPS `https://203-0-113-10.sslip.io`. Ohne Variable gilt `https://kiez.ideenwerft-friedenau.de`. Andere Adresse: im Repo unter
 *Settings → Secrets and variables → Actions → Variables* die Variable `KIEZ_SERVER_URL` setzen (z. B. `https://kiez.example.de`)
 und den Workflow „Android-APK“ neu starten.
 

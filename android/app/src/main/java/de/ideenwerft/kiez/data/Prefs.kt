@@ -11,11 +11,6 @@ class Prefs(context: Context) {
         get() = sp.getString("token", null)
         set(v) = sp.edit { putString("token", v) }
 
-    // Eigene Server-Adresse; null heißt: die beim Bauen eingetragene Adresse
-    var serverUrl: String?
-        get() = sp.getString("server", null)
-        set(v) = sp.edit { if (v == null) remove("server") else putString("server", v) }
-
     var theme: String
         get() = sp.getString("theme", "auto") ?: "auto"
         set(v) = sp.edit { putString("theme", v) }
