@@ -1,6 +1,7 @@
 package de.ideenwerft.kiez
 
 import android.app.Application
+import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
@@ -20,12 +21,12 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 // Gemeinsame Objekte der App: Server-Verbindung, Einstellungen, Bild- und Video-Zwischenspeicher
+@OptIn(UnstableApi::class)
 class KiezApp : Application(), SingletonImageLoader.Factory {
     lateinit var prefs: Prefs
     lateinit var api: Api
     lateinit var http: OkHttpClient
 
-    @UnstableApi
     val videoCache: SimpleCache by lazy {
         // Bereits gesehene Videos nicht erneut laden (wie AndroidVideoCache bei Jodel)
         SimpleCache(File(cacheDir, "video"), LeastRecentlyUsedCacheEvictor(200L * 1024 * 1024), StandaloneDatabaseProvider(this))
