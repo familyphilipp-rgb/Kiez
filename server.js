@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
+const media = require('./media');
 
 const PORT = Number(process.env.PORT) || 3000;
 const RADIUS_KM = Number(process.env.RADIUS_KM) || 10;
@@ -47,6 +48,8 @@ db.exec(`
     PRIMARY KEY (post_id, user_id)
   );
 `);
+
+media.init(db);
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
@@ -104,6 +107,7 @@ function serialize(p, userId, origin, opUserId) {
     commentCount: p.comment_count,
     myVote: myVote ? myVote.value : 0,
     mine: p.user_id === userId,
+    media: media.forPost(db, p.id),
     distance: origin ? distanceLabel(haversineKm(origin.lat, origin.lng, p.lat, p.lng)) : null,
   };
   if (opUserId !== undefined) out.isOP = p.user_id === opUserId;
@@ -138,6 +142,18 @@ function rateLimited(userId) {
 
 function validText(t) {
   return typeof t === 'string' && t.trim().length > 0 && t.trim().length <= MAX_LEN;
+}
+
+// Text und/oder Medium: ohne Foto/Video ist Text Pflicht
+function checkContent(body, userId) {
+  const text = typeof body.text === 'string' ? body.text.trim() : '';
+  if (text.length > MAX_LEN) return { error: `Text darf höchstens ${MAX_LEN} Zeichen haben` };
+  if (body.mediaId != null) {
+    if (typeof body.mediaId !== 'string' || !media.claimable(db, body.mediaId, userId)) return { error: 'Foto/Video nicht gefunden, bitte neu hochladen' };
+    return { text, mediaId: body.mediaId };
+  }
+  if (!validText(text)) return { error: `Text muss 1–${MAX_LEN} Zeichen haben` };
+  return { text, mediaId: null };
 }
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
@@ -176,6 +192,17 @@ async function handleApi(req, res, url) {
   const user = getUser(req);
   if (!user) return send(res, 401, { error: 'Nicht angemeldet' });
 
+  // Foto- oder Video-Upload (Rohdaten im Body)
+  if (req.method === 'POST' && pathname === '/api/media') {
+    if (rateLimited(user.id)) return send(res, 429, { error: 'Langsam! Bitte kurz warten.' });
+    try {
+      return send(res, 201, await media.handleUpload(db, req, user.id));
+    } catch (err) {
+      if (err instanceof media.UploadError) return send(res, err.status, { error: err.message });
+      throw err;
+    }
+  }
+
   // Feed im Umkreis
   if (req.method === 'GET' && pathname === '/api/posts') {
     const origin = parseCoords(searchParams);
@@ -199,13 +226,15 @@ async function handleApi(req, res, url) {
   // Neuer Post
   if (req.method === 'POST' && pathname === '/api/posts') {
     const body = await readBody(req);
-    if (!validText(body.text)) return send(res, 400, { error: `Text muss 1–${MAX_LEN} Zeichen haben` });
+    const content = checkContent(body, user.id);
+    if (content.error) return send(res, 400, { error: content.error });
     const lat = Number(body.lat), lng = Number(body.lng);
     if (body.lat == null || body.lng == null || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return send(res, 400, { error: 'Standort fehlt' });
     if (rateLimited(user.id)) return send(res, 429, { error: 'Langsam! Bitte kurz warten.' });
     const color = COLORS[Math.floor(Math.random() * COLORS.length)];
     const r = db.prepare('INSERT INTO posts (user_id, text, color, lat, lng, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(user.id, body.text.trim(), color, fuzz(lat), fuzz(lng), Date.now());
+      .run(user.id, content.text, color, fuzz(lat), fuzz(lng), Date.now());
+    if (content.mediaId) media.attach(db, content.mediaId, user.id, Number(r.lastInsertRowid));
     const p = db.prepare(`SELECT ${POST_COLUMNS} FROM posts p WHERE p.id = ?`).get(r.lastInsertRowid);
     return send(res, 201, serialize(p, user.id, { lat, lng }));
   }
@@ -238,10 +267,12 @@ async function handleApi(req, res, url) {
     const parent = db.prepare('SELECT * FROM posts WHERE id = ? AND parent_id IS NULL').get(Number(mm[1]));
     if (!parent) return send(res, 404, { error: 'Post nicht gefunden' });
     const body = await readBody(req);
-    if (!validText(body.text)) return send(res, 400, { error: `Text muss 1–${MAX_LEN} Zeichen haben` });
+    const content = checkContent(body, user.id);
+    if (content.error) return send(res, 400, { error: content.error });
     if (rateLimited(user.id)) return send(res, 429, { error: 'Langsam! Bitte kurz warten.' });
     const r = db.prepare('INSERT INTO posts (user_id, parent_id, text, color, lat, lng, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(user.id, parent.id, body.text.trim(), parent.color, parent.lat, parent.lng, Date.now());
+      .run(user.id, parent.id, content.text, parent.color, parent.lat, parent.lng, Date.now());
+    if (content.mediaId) media.attach(db, content.mediaId, user.id, Number(r.lastInsertRowid));
     return send(res, 201, { id: Number(r.lastInsertRowid) });
   }
 
@@ -267,13 +298,14 @@ async function handleApi(req, res, url) {
     if (!db.prepare('SELECT 1 FROM posts WHERE id = ?').get(id)) return send(res, 404, { error: 'Post nicht gefunden' });
     db.prepare('INSERT OR IGNORE INTO reports (post_id, user_id) VALUES (?, ?)').run(id, user.id);
     const { n } = db.prepare('SELECT COUNT(*) AS n FROM reports WHERE post_id = ?').get(id);
-    if (n >= 3) db.prepare('DELETE FROM posts WHERE id = ?').run(id);
+    if (n >= 3) { db.prepare('DELETE FROM posts WHERE id = ?').run(id); media.cleanup(db); }
     return send(res, 200, { ok: true });
   }
 
   // Eigenen Post löschen
   if (req.method === 'DELETE' && (mm = m(/^\/api\/posts\/(\d+)$/))) {
     const r = db.prepare('DELETE FROM posts WHERE id = ? AND user_id = ?').run(Number(mm[1]), user.id);
+    if (r.changes) media.cleanup(db);
     return r.changes ? send(res, 200, { ok: true }) : send(res, 404, { error: 'Post nicht gefunden' });
   }
 
@@ -291,6 +323,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
     if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
+    else if (url.pathname.startsWith('/media/')) media.serve(req, res, url.pathname.slice(7));
     else serveStatic(req, res, url.pathname);
   } catch (err) {
     console.error(err);
@@ -299,6 +332,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
-  server.listen(PORT, () => console.log(`Jodel-Klon läuft auf http://localhost:${PORT} (Radius ${RADIUS_KM} km)`));
+  setInterval(() => media.cleanup(db), 600_000).unref();
+  server.listen(PORT, () => console.log(`Kiez läuft auf http://localhost:${PORT} (Radius ${RADIUS_KM} km, ffmpeg ${media.HAS_FFMPEG ? 'an' : 'aus'})`));
 }
 module.exports = { server, db };

@@ -34,6 +34,116 @@ async function register() {
   state.token = token; store.set('kiez-token', token);
 }
 
+// --- Fotos und Videos ---
+const MAX_VIDEO_MB = 100;
+
+// Fotos im Browser verkleinern; das Neu-Zeichnen entfernt auch EXIF-Daten wie den GPS-Ort
+async function shrinkImage(file) {
+  if (file.type === 'image/gif') return file;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    return await new Promise((r) => canvas.toBlob((b) => r(b || file), 'image/jpeg', 0.85));
+  } catch { return file; }
+}
+
+function uploadMedia(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/media');
+    xhr.setRequestHeader('Authorization', `Bearer ${state.token}`);
+    xhr.setRequestHeader('Content-Type', file.type);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.upload.onload = () => onProgress(1);
+    xhr.onload = () => {
+      let data = {}; try { data = JSON.parse(xhr.responseText); } catch {}
+      xhr.status < 300 ? resolve(data) : reject(new Error(data.error || 'Upload fehlgeschlagen'));
+    };
+    xhr.onerror = () => reject(new Error('Keine Verbindung zum Server'));
+    xhr.send(file);
+  });
+}
+
+// Auswahl-Knöpfe, Vorschau und Fortschritt; wird im Composer und bei Antworten benutzt
+function mediaPicker({ compact = false } = {}) {
+  let file = null;
+  const preview = el('div', { class: 'media-preview', hidden: true });
+  const bar = el('div', { class: 'progress', hidden: true }, el('span'));
+  const pick = async (accept) => {
+    // In der Android-App bietet die Dateiauswahl keine Kamera an, daher selbst fragen
+    let capture = null;
+    if (window.Capacitor?.isNativePlatform?.()) {
+      const choice = await chooseSource(accept.startsWith('video') ? 'Video' : 'Foto');
+      if (!choice) return;
+      if (choice === 'camera') capture = 'environment';
+    }
+    const input = el('input', { type: 'file', accept, capture });
+    input.onchange = async () => {
+      const f = input.files[0]; if (!f) return;
+      if (f.type.startsWith('video/') && f.size > MAX_VIDEO_MB * 1024 * 1024) return toast(`Video ist zu groß (max. ${MAX_VIDEO_MB} MB)`);
+      file = f.type.startsWith('image/') ? await shrinkImage(f) : f;
+      const url = URL.createObjectURL(file);
+      const remove = el('button', { type: 'button', class: 'remove', 'aria-label': 'Entfernen', onclick: reset }, '×');
+      preview.replaceChildren(file.type.startsWith('video/')
+        ? el('video', { src: url, muted: true, playsinline: true, controls: true, preload: 'metadata' })
+        : el('img', { src: url, alt: 'Vorschau' }), remove);
+      preview.hidden = false;
+    };
+    input.click();
+  };
+  function reset() { file = null; preview.hidden = true; preview.replaceChildren(); bar.hidden = true; }
+  const buttons = el('div', { class: 'media-buttons' + (compact ? ' compact' : '') },
+    el('button', { type: 'button', class: 'chip', onclick: () => pick('image/*') }, compact ? '📷' : '📷 Foto'),
+    el('button', { type: 'button', class: 'chip', onclick: () => pick('video/*') }, compact ? '🎬' : '🎬 Video'));
+  return {
+    buttons, preview, bar, reset,
+    get file() { return file; },
+    // Lädt die Datei hoch (falls vorhanden) und liefert die Medien-ID
+    async upload() {
+      if (!file) return null;
+      bar.hidden = false;
+      const fill = bar.firstChild;
+      const res = await uploadMedia(file, (f) => {
+        fill.style.width = `${Math.round(f * 100)}%`;
+        if (f >= 1 && file.type.startsWith('video/')) bar.dataset.label = 'Video wird verarbeitet…';
+      });
+      delete bar.dataset.label;
+      return res.id;
+    },
+  };
+}
+
+function chooseSource(what) {
+  return new Promise((resolve) => {
+    const d = el('dialog', { class: 'sheet' });
+    const done = (v) => { d.close(); d.remove(); resolve(v); };
+    d.append(el('span', { class: 'eyebrow' }, `${what} hinzufügen`),
+      el('button', { type: 'button', class: 'chip', onclick: () => done('camera') }, what === 'Video' ? '🎬 Video aufnehmen' : '📷 Foto aufnehmen'),
+      el('button', { type: 'button', class: 'chip', onclick: () => done('gallery') }, '🖼️ Aus der Galerie'),
+      el('button', { type: 'button', class: 'ghost', onclick: () => done(null) }, 'Abbrechen'));
+    d.addEventListener('cancel', () => done(null));
+    document.body.append(d); d.showModal();
+  });
+}
+
+function mediaView(m) {
+  if (!m) return null;
+  const ratio = m.width && m.height ? `aspect-ratio:${m.width}/${m.height}` : '';
+  if (m.kind === 'video') {
+    return el('video', { class: 'media', src: m.url, poster: m.poster, controls: true, playsinline: true, preload: 'none', style: ratio,
+      onclick: (e) => e.stopPropagation() });
+  }
+  return el('img', { class: 'media', src: m.url, alt: 'Foto', loading: 'lazy', style: ratio, onclick: (e) => { e.stopPropagation(); showImage(m.url); } });
+}
+
+function showImage(url) {
+  const d = el('dialog', { class: 'lightbox', onclick: () => { d.close(); d.remove(); } }, el('img', { src: url, alt: 'Foto' }));
+  document.body.append(d); d.showModal();
+}
+
 const qs = () => `lat=${state.coords.lat}&lng=${state.coords.lng}`;
 
 function timeAgo(ts) {
@@ -91,16 +201,17 @@ function postCard(p, { isReply = false, onOpen } = {}) {
 
   const body = el('div', { class: 'body', onclick: onOpen || null },
     el('div', { class: 'meta' }, author, el('span', {}, timeAgo(p.createdAt)), p.distance && !isReply ? el('span', {}, '📍 ' + p.distance) : null),
-    el('div', { class: 'text' }, p.text),
+    p.text ? el('div', { class: 'text' }, p.text) : null,
+    mediaView(p.media),
     el('div', { class: 'footer' }, isReply ? null : el('span', {}, `💬 ${p.commentCount}`), ...actions));
 
   return el('article', { class: 'post' + (isReply ? ' reply' : ''), style: `--accent:${p.color}` }, body, votes);
 }
 
 async function showFeed() {
-  state.openPost = null;
+  state.openPost = null; state.replyDraft = null;
   $('#tabs').hidden = false; $('#fab').hidden = false; $('#intro').hidden = false;
-  history.replaceState(null, '', '/');
+  if (location.hash) history.replaceState(null, '', '/');
   try {
     const { posts, radiusKm } = await api(`/api/posts?${qs()}&sort=${state.sort}`);
     view.replaceChildren();
@@ -116,16 +227,26 @@ async function showFeed() {
 }
 
 async function openPost(id) {
+  if (state.openPost !== id) history.pushState({ post: id }, '', `#post-${id}`);
   state.openPost = id;
   $('#tabs').hidden = true; $('#fab').hidden = true; $('#intro').hidden = true;
   try {
     const { post, replies } = await api(`/api/posts/${id}?${qs()}`);
-    const input = el('input', { placeholder: 'Antworten…', maxlength: 250, required: true });
+    const input = el('input', { placeholder: 'Antworten…', maxlength: 250 });
+    const picker = mediaPicker({ compact: true });
+    state.replyDraft = () => input.value.trim() || picker.file;
+    const send = el('button', { class: 'primary', type: 'submit' }, 'Senden');
     const form = el('form', { class: 'reply-form', onsubmit: async (e) => {
       e.preventDefault();
-      try { await api(`/api/posts/${id}/replies`, { method: 'POST', body: { text: input.value } }); openPost(id); }
-      catch (err) { toast(err.message); }
-    } }, input, el('button', { class: 'primary', type: 'submit' }, 'Senden'));
+      if (!input.value.trim() && !picker.file) return;
+      send.disabled = true;
+      try {
+        const mediaId = await picker.upload();
+        await api(`/api/posts/${id}/replies`, { method: 'POST', body: { text: input.value, mediaId } });
+        openPost(id);
+      } catch (err) { toast(err.message); send.disabled = false; }
+    } }, el('div', { class: 'reply-extras' }, picker.preview, picker.bar),
+      el('div', { class: 'reply-row' }, picker.buttons, input, send));
     view.replaceChildren(
       el('div', { class: 'detail-head' }, el('button', { onclick: showFeed }, '← Zurück')),
       postCard(post),
@@ -136,8 +257,12 @@ async function openPost(id) {
   } catch (e) { toast(e.message); showFeed(); }
 }
 
+let composerPicker;
 function openComposer() {
   $('#composeText').value = ''; $('#count').textContent = '0';
+  composerPicker = mediaPicker();
+  $('#composeMedia').replaceChildren(composerPicker.preview, composerPicker.bar, composerPicker.buttons);
+  $('#sendCompose').disabled = false;
   $('#composer').showModal();
   $('#composeText').focus();
 }
@@ -186,21 +311,29 @@ $('#composeText').oninput = (e) => ($('#count').textContent = e.target.value.len
 $('#composeForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = $('#composeText').value.trim();
-  if (!text) return;
+  if (!text && !composerPicker.file) return toast('Schreib etwas oder füge ein Foto/Video hinzu');
+  $('#sendCompose').disabled = true;
   try {
-    await api('/api/posts', { method: 'POST', body: { text, ...state.coords } });
+    const mediaId = await composerPicker.upload();
+    await api('/api/posts', { method: 'POST', body: { text, mediaId, ...state.coords } });
     $('#composer').close();
     state.sort = 'new';
     document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x.dataset.sort === 'new'));
     showFeed();
-  } catch (err) { toast(err.message); }
+  } catch (err) { toast(err.message); $('#sendCompose').disabled = false; }
 });
 $('#karma').onclick = async () => {
   try { const { karma, posts } = await api('/api/me'); toast(`Karma ${karma} · ${posts} Beiträge`); } catch {}
 };
-// Pull-to-refresh-Ersatz: beim Zurückkehren in den Tab neu laden
+// Zurück-Taste (Browser und Android) führt von einem Post zurück zum Feed
+window.addEventListener('popstate', () => { if (state.openPost) showFeed(); });
+
+// Beim Zurückkehren in die App neu laden, aber nicht während man gerade schreibt oder ein Foto auswählt
+let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.coords) state.openPost ? openPost(state.openPost) : showFeed();
+  if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+  if (!state.coords || Date.now() - hiddenAt < 60_000 || $('#composer').open) return;
+  if (state.openPost) { if (!state.replyDraft?.()) openPost(state.openPost); } else showFeed();
 });
 
 // --- Start ---

@@ -1,0 +1,27 @@
+# Kiez neben der Ideenwerft-Website: läuft im selben Docker-Netz, der Caddy der Ideenwerft
+# leitet die Kiez-Subdomain hierher weiter (siehe deploy/Caddyfile.kiez).
+name: kiez
+services:
+  kiez:
+    build: ..
+    container_name: kiez
+    restart: unless-stopped
+    environment:
+      RADIUS_KM: 10
+      MAX_VIDEO_MB: 100
+      MAX_VIDEO_SECONDS: 60
+    volumes:
+      - kiez-data:/data
+    networks:
+      - ideenwerft
+    # Begrenzung, damit Video-Umwandlungen die Ideenwerft-Website nicht ausbremsen
+    cpus: 1.0
+    mem_limit: 768m
+
+volumes:
+  kiez-data: {}
+
+networks:
+  ideenwerft:
+    external: true
+    name: ideenwerft_default

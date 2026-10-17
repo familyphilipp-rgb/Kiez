@@ -1,0 +1,71 @@
+name: Android-APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: npm test
+
+  apk:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Server-Adresse eintragen und Android-Projekt synchronisieren
+        env:
+          # Unter Settings → Secrets and variables → Actions → Variables änderbar
+          KIEZ_SERVER_URL: ${{ vars.KIEZ_SERVER_URL }}
+        run: npm run android:sync
+
+      - name: APK bauen
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: APK umbenennen
+        run: cp android/app/build/outputs/apk/release/app-release.apk kiez.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kiez-apk
+          path: kiez.apk
+
+      # Immer die neueste APK unter einer festen Adresse zum Herunterladen aufs Handy
+      - name: Als Release „Neueste APK“ veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest --cleanup-tag --yes || true
+          gh release create apk-latest kiez.apk \
+            --title "Neueste APK (Build ${{ github.run_number }})" \
+            --notes "Automatisch gebaut aus ${{ github.sha }}. Auf dem Handy herunterladen und installieren." \
+            --prerelease --target ${{ github.sha }}

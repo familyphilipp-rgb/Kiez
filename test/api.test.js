@@ -4,7 +4,9 @@ const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
 
-process.env.DB_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kiez-')), 'test.db');
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'kiez-'));
+process.env.DB_FILE = path.join(TMP, 'test.db');
+process.env.UPLOAD_DIR = path.join(TMP, 'uploads');
 const { server } = require('../server.js');
 let base;
 before(() => new Promise((r) => server.listen(0, () => { base = `http://localhost:${server.address().port}`; r(); })));
@@ -62,4 +64,57 @@ test('Sortierung und Validierung', async () => {
   assert.equal((await call('GET', '/api/posts?lat=1&lng=1')).status, 401);
   const loud = await call('GET', `/api/posts?lat=${BERLIN.lat}&lng=${BERLIN.lng}&sort=loud`, u);
   assert.equal(loud.data.posts[0].text, 'Frage an alle');
+});
+
+async function upload(token, type, buf) {
+  const res = await fetch(base + '/api/media', { method: 'POST', headers: { 'Content-Type': type, Authorization: `Bearer ${token}` }, body: buf });
+  return { status: res.status, data: await res.json() };
+}
+// 1x1-JPEG
+const JPEG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
+
+test('Foto-Post: Upload, Anhängen, Ausliefern, Aufräumen', async () => {
+  const u = await newUser();
+  const up = await upload(u, 'image/jpeg', JPEG);
+  assert.equal(up.status, 201, JSON.stringify(up.data));
+  assert.equal(up.data.kind, 'image');
+  const { status, data: post } = await call('POST', '/api/posts', u, { mediaId: up.data.id, ...BERLIN });
+  assert.equal(status, 201);
+  assert.equal(post.media.kind, 'image');
+  const file = await fetch(base + post.media.url);
+  assert.equal(file.status, 200);
+  assert.match(file.headers.get('content-type'), /^image\//);
+  // Dasselbe Medium kann nicht zweimal benutzt werden
+  assert.equal((await call('POST', '/api/posts', u, { mediaId: up.data.id, ...BERLIN })).status, 400);
+  // Fremde Medien kann man nicht anhängen
+  const other = await newUser();
+  const up2 = await upload(u, 'image/jpeg', JPEG);
+  assert.equal((await call('POST', '/api/posts', other, { mediaId: up2.data.id, ...BERLIN })).status, 400);
+  // Löschen entfernt auch die Datei
+  await call('DELETE', `/api/posts/${post.id}`, u);
+  assert.equal((await fetch(base + post.media.url)).status, 404);
+});
+
+test('Upload-Prüfungen: falscher Typ, gefälschter Inhalt', async () => {
+  const u = await newUser();
+  assert.equal((await upload(u, 'text/html', Buffer.from('<h1>x</h1>'))).status, 415);
+  assert.equal((await upload(u, 'image/png', Buffer.from('<script>alert(1)</script>'))).status, 415);
+});
+
+const { spawnSync } = require('node:child_process');
+const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
+test('Video: wird zu MP4 umgewandelt, bekommt Vorschaubild, Range-Anfragen gehen', { skip: !hasFfmpeg && 'ffmpeg fehlt' }, async () => {
+  const src = path.join(TMP, 'clip.mov');
+  spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=25', '-f', 'lavfi', '-i', 'sine', '-t', '2',
+    '-metadata', 'location=+52.5200+013.4050/', '-c:v', 'libx264', '-c:a', 'aac', src]);
+  const u = await newUser();
+  const up = await upload(u, 'video/quicktime', fs.readFileSync(src));
+  assert.equal(up.status, 201, JSON.stringify(up.data));
+  assert.match(up.data.url, /\.mp4$/);
+  assert.ok(up.data.poster);
+  const r = await fetch(base + up.data.url, { headers: { Range: 'bytes=0-99' } });
+  assert.equal(r.status, 206);
+  assert.equal((await r.arrayBuffer()).byteLength, 100);
+  const meta = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format_tags', '-of', 'json', path.join(process.env.UPLOAD_DIR, path.basename(up.data.url))]);
+  assert.ok(!String(meta.stdout).includes('52.52'), 'GPS-Metadaten müssen entfernt sein');
 });

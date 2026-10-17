@@ -1,0 +1,7 @@
+node_modules
+android
+docs
+test
+.git
+*.db*
+uploads

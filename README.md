@@ -1,9 +1,9 @@
 # Kiez – hyperlokale, anonyme Community-App (Jodel-Klon)
 
-Anonyme Posts, die nur Leute im Umkreis von 10 km sehen. Mit Up-/Downvotes, Antworten, Karma und Sortierung.
+Anonyme Posts mit Fotos und Videos, die nur Leute im Umkreis von 10 km sehen. Mit Up-/Downvotes, Antworten, Karma und Sortierung. Läuft im Browser, als installierbare Web-App und als Android-App (APK).
 Gestaltet im Stil der Ideenwerft Friedenau: Ideenwerft-Rot, Space Grotesk und Syne, Anker-Logo, helle Karten mit Farbakzent, Dark Mode.
 
-![Feed](docs/feed.png) ![Antworten](docs/detail.png) ![Dark Mode](docs/dark.png)
+![Feed](docs/feed.png) ![Foto-Post](docs/media.png) ![Dark Mode](docs/dark.png)
 
 ## Starten
 
@@ -35,6 +35,43 @@ Die angezeigte https-Adresse am Handy öffnen und über „Zum Startbildschirm h
 | `PORT`      | `3000`        | Port des Servers              |
 | `RADIUS_KM` | `10`          | Sichtbarkeitsradius in km     |
 | `DB_FILE`   | `./jodel.db`  | Pfad zur SQLite-Datenbank     |
+| `UPLOAD_DIR` | `./uploads`  | Ordner für Fotos und Videos   |
+| `MAX_IMAGE_MB` / `MAX_VIDEO_MB` | `15` / `100` | maximale Dateigröße |
+| `MAX_VIDEO_SECONDS` | `60` | Videos werden auf diese Länge gekürzt |
+
+## Android-App (APK)
+
+Bei jedem Push auf `main` baut GitHub Actions automatisch eine APK und stellt sie als Release
+**„Neueste APK“** bereit: im Repo unter *Releases → apk-latest → kiez.apk*. Auf dem Handy herunterladen,
+öffnen und „Installation aus dieser Quelle erlauben“ bestätigen. Neue Versionen lassen sich einfach drüber installieren.
+
+Die App ist eine Hülle um die Web-App auf dem Server (Capacitor). Neue Funktionen auf dem Server sind deshalb
+sofort in der App, ohne neue APK. Eine neue APK braucht es nur bei Änderungen im Ordner `android/`.
+
+**Server-Adresse:** Die App lädt `https://kiez.ideenwerft-friedenau.de`. Andere Adresse: im Repo unter
+*Settings → Secrets and variables → Actions → Variables* die Variable `KIEZ_SERVER_URL` setzen (z. B. `https://kiez.example.de`)
+und den Workflow „Android-APK“ neu starten.
+
+**Signatur:** Die APK wird mit einem Schlüssel aus dem Repo signiert (`android/app/kiez-sideload.keystore`), damit Updates
+ohne Deinstallation klappen. Das reicht zum Verteilen per Link. Für den Play Store einen eigenen, geheimen Schlüssel
+erstellen und über `KIEZ_KEYSTORE_FILE`, `KIEZ_KEYSTORE_PASSWORD`, `KIEZ_KEY_ALIAS`, `KIEZ_KEY_PASSWORD` übergeben.
+
+Lokal bauen (mit Android Studio oder Android SDK): `npm ci && npm run android:sync && cd android && ./gradlew assembleRelease`.
+
+## Auf dem Hetzner-Server (neben der Ideenwerft-Website)
+
+Kiez läuft als eigener Docker-Container im Netz der Ideenwerft. Der vorhandene Caddy übernimmt HTTPS.
+
+1. **DNS:** A-Eintrag `kiez.ideenwerft-friedenau.de` auf die IP des Servers setzen.
+2. **Code holen:** `git clone https://github.com/familyphilipp-rgb/Kiez.git /opt/kiez`
+3. **Starten:** `cd /opt/kiez && docker compose -f deploy/docker-compose.yml up -d --build`
+   (setzt voraus, dass die Ideenwerft mit `docker compose` als Projekt `ideenwerft` läuft, Netz `ideenwerft_default`).
+4. **Caddy:** den Block aus [`deploy/Caddyfile.kiez`](deploy/Caddyfile.kiez) unten in die Caddyfile der Ideenwerft einfügen,
+   dann im Ideenwerft-Ordner `docker compose exec web caddy reload --config /etc/caddy/Caddyfile`.
+5. **Updates:** `/opt/kiez/deploy/update.sh`
+
+Datenbank und Uploads liegen im Docker-Volume `kiez_kiez-data`. Der Container ist auf 1 CPU und 768 MB RAM begrenzt,
+damit Video-Umwandlungen die Website nicht ausbremsen. Platzbedarf: ein Foto ca. 0,3 MB, eine Videominute ca. 5–10 MB.
 
 ## Funktionen
 
@@ -43,6 +80,7 @@ Die angezeigte https-Adresse am Handy öffnen und über „Zum Startbildschirm h
 - **Votes:** ▲/▼, erneutes Tippen nimmt den Vote zurück. Eigene Posts kann man nicht voten. Ab Score −5 verschwindet ein Post.
 - **Antworten:** Der Ersteller ist mit **OJ** markiert, alle anderen bekommen pro Thread eine feste Nummer (#1, #2 …).
 - **Sortierung:** Neueste, Beliebt (Votes gewichtet mit Alter), Am lautesten (meiste Antworten).
+- **Fotos und Videos:** in Posts und Antworten. Fotos werden auf 1600 px verkleinert, Videos auf max. 60 s und 720p (H.264) umgewandelt und bekommen ein Vorschaubild. Dabei werden alle Metadaten wie der GPS-Ort entfernt (braucht `ffmpeg`, im Docker-Image enthalten). In der Android-App kann man direkt mit der Kamera aufnehmen.
 - **Karma:** Summe aller Votes auf die eigenen Beiträge (Stern oben rechts).
 - **Moderation:** Melden; ab 3 Meldungen wird ein Beitrag gelöscht. Eigene Beiträge lassen sich löschen. Rate-Limit: 10 Beiträge pro 10 Minuten.
 - **PWA:** installierbar, App-Hülle funktioniert offline.
@@ -51,6 +89,10 @@ Die angezeigte https-Adresse am Handy öffnen und über „Zum Startbildschirm h
 
 ```
 server.js            HTTP-Server, REST-API, SQLite (node:sqlite)
+media.js             Foto-/Video-Upload, Umwandlung mit ffmpeg, Auslieferung mit Range-Support
+android/             Android-App (Capacitor)
+deploy/              Docker Compose, Caddy-Block und Update-Skript für den Server
+.github/workflows/   Tests und APK-Build
 public/index.html    App-Hülle
 public/app.js        Frontend (ohne Framework)
 public/style.css     Design im Ideenwerft-Stil, inkl. Dark Mode
@@ -67,9 +109,10 @@ Alle Routen außer `/api/register` brauchen `Authorization: Bearer <token>`.
 |---------|-----------------------------|----------------------------------------|
 | POST    | `/api/register`             | anonymes Konto, liefert `token`        |
 | GET     | `/api/posts?lat&lng&sort`   | Feed (`sort` = `new`/`popular`/`loud`) |
-| POST    | `/api/posts`                | `{text, lat, lng}`                     |
+| POST    | `/api/media`                | Rohdaten, `Content-Type` = MIME-Typ; liefert `id` |
+| POST    | `/api/posts`                | `{text, mediaId?, lat, lng}`           |
 | GET     | `/api/posts/:id?lat&lng`    | Post mit Antworten                     |
-| POST    | `/api/posts/:id/replies`    | `{text}`                               |
+| POST    | `/api/posts/:id/replies`    | `{text, mediaId?}`                     |
 | POST    | `/api/posts/:id/vote`       | `{value: 1 / -1 / 0}`                  |
 | POST    | `/api/posts/:id/report`     | melden                                 |
 | DELETE  | `/api/posts/:id`            | eigenen Beitrag löschen                |
@@ -77,4 +120,4 @@ Alle Routen außer `/api/register` brauchen `Authorization: Bearer <token>`.
 
 ## Mögliche nächste Schritte
 
-Bilder in Posts, Kanäle/Hashtags, Push-Benachrichtigungen bei Antworten, Hometown-Feature, native App (z. B. mit Capacitor oder React Native), Betrieb mit Postgres/PostGIS bei vielen Nutzern.
+Kanäle/Hashtags, Push-Benachrichtigungen bei Antworten, Heimatstadt-Funktion, iOS-App, Betrieb mit Postgres/PostGIS bei vielen Nutzern.

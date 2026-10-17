@@ -1,0 +1,12 @@
+{
+  "appId": "de.ideenwerft.kiez",
+  "appName": "Kiez",
+  "webDir": "public",
+  "server": {
+    "url": "https://kiez.ideenwerft-friedenau.de",
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

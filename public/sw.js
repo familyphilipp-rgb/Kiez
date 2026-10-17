@@ -1,5 +1,5 @@
 // Service Worker: App-Shell offline, API immer frisch
-const CACHE = 'kiez-v2';
+const CACHE = 'kiez-v3';
 const SHELL = ['/', '/style.css', '/app.js', '/icon.svg', '/manifest.webmanifest', '/fonts/SpaceGrotesk.woff2', '/fonts/Syne.woff2'];
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL))));
 self.addEventListener('activate', (e) => e.waitUntil(
